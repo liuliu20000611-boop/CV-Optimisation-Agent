@@ -1,0 +1,9 @@
+.git
+.venv
+venv
+frontend/node_modules
+__pycache__
+*.md
+.env
+.pytest_cache
+.mypy_cache
