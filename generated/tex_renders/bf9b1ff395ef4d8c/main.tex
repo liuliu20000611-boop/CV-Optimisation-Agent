@@ -1,0 +1,99 @@
+% !TeX TS-program = xelatex
+
+\documentclass{resume}
+\ResumeName{刘毓池}
+
+% 如果想插入照片，请使用以下两个库。
+% \usepackage{graphicx}
+% \usepackage{tikz}
+
+\begin{document}
+
+\ResumeContacts{
+  19581520611,%
+  \ResumeUrl{mailto:834787030@qq.com}{834787030@qq.com},%
+  求职意向:AI开发工程师%
+}
+
+% 如果想插入照片，请取消此代码的注释。
+% 但是默认不推荐插入照片，因为这不是简历的重点。
+% 如果默认的照片插入格式不能满足你的需求，你可以尝试调整照片的大小，或者使用其他的插入照片的方法。
+% 不然，也可以先渲染 PDF 简历，然后用其他工具在 PDF 上叠加照片。
+% \begin{tikzpicture}[remember picture, overlay]
+%   \node [anchor=north east, inner sep=1cm]  at (current page.north east) 
+%      {\includegraphics[width=2cm]{image.png}};
+% \end{tikzpicture}
+
+\ResumeTitle
+
+
+\section{教育经历}
+\ResumeItem
+[中南民族大学|硕士研究生]
+{中南民族大学}
+[\textnormal{计算机科学与技术，计算机科学与技术学院|}  学术型硕士研究生]
+[2023.09—至今]
+
+\textbf{GPA: 4.13/5.0 (5/21)}，获奖情况：校级二等奖奖学金(3次)；泰迪杯国家二等奖。
+学术成果：MS-ECFormer, IJCNN2026, CCF C, 一作论文(风电预测, Transformer方向)。
+
+\ResumeItem
+[中北大学|本科生]
+{中北大学}
+[\textnormal{计算机科学与技术，计算机科学与技术学院|} 工学学士]
+[2018.09—2022.06]
+
+\textbf{GPA: 3.93/5.0 (4/104)}，获奖情况：校级二等奖奖学金(4次)；蓝桥杯国家三等奖。
+
+\section[专业技能]{专业技能}
+\begin{itemize}
+  \item \textbf{编程语言}: 掌握 Python/C++，具备扎实的数据结构与算法基础。
+  \item \textbf{大模型与智能体}: 具备RAG开发与系统优化经验，熟悉LangChain、LlamaIndex等框架。了解ReAct、Reflection等Agent推理范式以及AutoGen多智能体框架的基本原理。具备大模型微调经验，包括LoRA、SFT数据构建与继续预训练。关注大模型与智能体安全前沿动态，了解提示安全、数据隐私保护等基本概念。
+  \item \textbf{工具与能力}: 熟练运用Git进行分支管理与团队协作；具备出色的问题拆解与快速学习能力，能快速适应多种编程语言与新技术。
+\end{itemize}
+
+\section{实习经历}
+
+\ResumeItem{武汉文弘文创}
+[大模型应用工程师]
+[2025.06—2025.09]
+
+\begin{itemize}
+  \item \textbf{项目：智能客服Agent系统}。针对“步道乐跑”APP数千万大学生用户的咨询需求，独立开发了集成RAG和自动化工具链的智能客服Agent系统，以降低人力成本并实现7×24小时精准服务。
+  \item \textbf{RAG知识库深度优化}: 针对非结构化《客服操作手册》，采用父子分块策略，将业务知识的检索召回率提升了30%，确保回答严格符合业务准则。
+  \item \textbf{Agent架构}: 利用LangChain框架，结合ReAct推理模式与有限状态机(FSM)，安全管控高风险业务流程并灵活处理用户多样化咨询意图。
+  \item \textbf{MCP Server工具化封装与动态编排}: 将后端数据库查询、打卡记录修复、日志提取等工具封装为标准MCP服务，支持通过异步/并发策略动态调用，实现了工具链的可控执行。
+\end{itemize}
+
+\section{项目经历}
+
+\ResumeItem{\textbf{铸牢中华民族共同体知识大模型对话系统}}
+[大模型应用项目]
+[2024.09—2025.06]
+\begin{itemize}
+  \item \textbf{项目介绍}: 基于大语言模型构建智能对话系统，通过权威政策和历史文化数据微调模型，结合RAG和Agent技术，实现多模态交互与复杂任务编排，提供民族领域智能知识服务。
+  \item \textbf{数据集构建}: 基于多源异构数据，通过分层提示词和自生成与增强生成双路径机制，构建了约17万条高质量监督微调数据集。
+  \item \textbf{模型微调}: 采用“继续预训练知识注入”和“递进式监督微调”策略，基于LoRA技术依次递进微调。最终模型在领域客观任务上较基座模型提升20.4%。
+  \item \textbf{RAG对话模块}: 构建了自适应双层检索增强生成架构，通过“关键词匹配限定检索范围+簇内稠密向量相似度计算”的双层检索机制，将Top-5召回准确率提升至87.5%，MRR达0.734。引入了输出内容的事实性核查与安全性过滤机制。
+\end{itemize}
+
+\ResumeItem{\textbf{基于视觉语言预训练(VLP)的中文图文检索研究}}
+[科研项目]
+[2024.03—2024.05]
+\begin{itemize}
+  \item \textbf{项目介绍}: 针对大规模图文检索中的语义失真和效率瓶颈问题，独立研发了跨模态检索系统。通过两阶段预训练并引入了Flash-Attention和优化存储方案，显著提升了海量异构数据下的检索精度和响应速度。
+  \item \textbf{数据处理与增强}: 扩充高质量数据集并利用LMDB存储结构解决小图片读取瓶颈，通过数据增强提升了模型在真实场景下的鲁棒性。
+  \item \textbf{训练策略优化}: 采用两阶段训练逻辑，结合Random Masking和Flash-Attention技术进行算子级优化。
+  \item \textbf{模型性能调优}: 通过细粒度图像文本特征对齐，使模型在处理位置关系和否定信息等复杂语义时的准确率提升了12.39%。
+\end{itemize}
+
+\section{个人总结}
+
+\begin{itemize}
+  \item 本人乐观开朗、在校成绩优异、自驱能力强，具有良好的沟通能力和团队合作精神。
+  \item 具备扎实的AI开发理论基础与丰富的实践项目经验，对大模型、智能体及RAG技术有深入理解和应用能力。
+  \item 善于技术钻研与问题解决，持续关注人工智能领域前沿技术发展。
+\end{itemize}
+
+
+\end{document}

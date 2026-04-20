@@ -16,11 +16,15 @@ from app.prompts import (
     ANALYSIS_SYSTEM,
     OPTIMIZE_SYSTEM,
     REFINE_OPTIMIZE_SYSTEM,
+    TEMPLATE_REWRITE_ERROR_SYSTEM,
+    TEMPLATE_REWRITE_SYSTEM,
     analysis_repair_user_message,
     analysis_user_message,
     optimize_user_message,
     reanalysis_user_message,
     refine_optimize_user_message,
+    template_rewrite_user_message,
+    template_rewrite_error_user_message,
 )
 from app.schemas import AnalysisResult
 
@@ -32,6 +36,16 @@ def _strip_json_fence(text: str) -> str:
     if t.startswith("```"):
         t = re.sub(r"^```(?:json)?\s*", "", t)
         t = re.sub(r"\s*```$", "", t)
+    return t.strip()
+
+
+def _strip_code_fence(text: str) -> str:
+    """Strip optional markdown code fence from model output."""
+    t = text.strip()
+    if not t.startswith("```"):
+        return t
+    t = re.sub(r"^```(?:[a-zA-Z0-9_-]+)?\s*", "", t)
+    t = re.sub(r"\s*```$", "", t)
     return t.strip()
 
 
@@ -241,6 +255,45 @@ async def run_refine_optimize(
     if not text:
         raise RuntimeError("模型未返回返修正文")
     return text
+
+
+async def run_template_rewrite(
+    settings: Settings,
+    optimized_resume: str,
+    template_tex: str,
+    user_feedback: str | None = None,
+    previous_tex: str | None = None,
+) -> str:
+    user = template_rewrite_user_message(
+        optimized_resume,
+        template_tex,
+        user_feedback,
+        previous_tex,
+    )
+    content = await chat_completion(
+        settings,
+        system=TEMPLATE_REWRITE_SYSTEM,
+        user=user,
+        temperature=0.2,
+    )
+    text = _strip_code_fence(content)
+    if not text:
+        raise RuntimeError("模型未返回模板改写结果")
+    if "\\begin{document}" not in text or "\\end{document}" not in text:
+        raise RuntimeError("模型返回的 TeX 结构不完整")
+    return text
+
+
+async def run_template_rewrite_error_explain(settings: Settings, error_text: str) -> str:
+    """Turn compiler/runtime error into user-friendly Chinese guidance."""
+    content = await chat_completion(
+        settings,
+        system=TEMPLATE_REWRITE_ERROR_SYSTEM,
+        user=template_rewrite_error_user_message(error_text),
+        temperature=0.1,
+    )
+    text = _strip_code_fence(content)
+    return text.strip() or "模板改写失败，请检查输入内容与模板兼容性后重试。"
 
 
 async def accumulate_stream(

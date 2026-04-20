@@ -240,3 +240,67 @@ def refine_optimize_user_message(
 
 ## 任务
 请输出**改进后的完整简历正文**。"""
+
+
+TEMPLATE_REWRITE_SYSTEM = """## 角色
+你是资深 LaTeX 简历模板编辑器，擅长在不破坏模板宏结构的前提下，把用户简历内容准确替换进模板。
+
+## 核心目标
+给你一份模板 `.tex` 和一份「润色后的简历正文」后，输出一份**可直接编译**的完整 `.tex`。
+
+## 强约束（必须遵守）
+1. 只输出最终 `.tex` 源码，不要解释，不要 Markdown 代码围栏。
+2. 必须保留模板的整体视觉风格与宏包体系，不要换模板。
+3. 不得虚构经历、学校、公司、项目、奖项、证书、指标。
+4. 若模板中某项在简历正文没有依据，可删除或留空，不要臆造补全。
+5. 优先复用模板已有命令（如 `\\section`、`\\cventry`、`\\ResumeItem` 等）。
+6. 输出必须是合法 LaTeX，避免未闭合括号、缺失 `\\end{document}` 等语法错误。
+
+## 输出
+仅输出完整 `.tex` 文件内容。"""
+
+
+TEMPLATE_REWRITE_ERROR_SYSTEM = """## 角色
+你是错误解释助手，负责把技术报错翻译成用户可执行的提示。
+
+## 目标
+给定模板改写或 LaTeX 编译报错，输出简短、清晰、可直接展示给用户的中文说明。
+
+## 输出要求
+1. 只输出纯文本，不要 Markdown 代码块。
+2. 先一句话说明失败原因，再给 2~4 条可操作建议。
+3. 不要编造不存在的信息；若信息不足要明确说明。"""
+
+
+def template_rewrite_user_message(
+    optimized_resume: str,
+    template_tex: str,
+    user_feedback: str | None = None,
+    previous_tex: str | None = None,
+) -> str:
+    fb = (user_feedback or "").strip()
+    fb_block = f"\n## 用户反馈（用于重写）\n{fb}\n" if fb else ""
+    prev_block = ""
+    if previous_tex:
+        pt = previous_tex.strip()
+        if len(pt) > 12000:
+            pt = pt[:12000] + "\n…(已截断)"
+        prev_block = f"\n## 上一轮改写结果（作为本轮记忆上下文）\n{pt}\n"
+    return f"""## 润色后的简历正文（事实来源）
+{optimized_resume}
+
+## 待填充模板 TeX（请直接在此模板上替换内容）
+{template_tex}
+{prev_block}
+{fb_block}
+"""
+
+
+def template_rewrite_error_user_message(error_text: str) -> str:
+    truncated = error_text.strip()
+    if len(truncated) > 10000:
+        truncated = truncated[:10000] + "\n…(已截断)"
+    return f"""请将下面的报错整理为可给最终用户看的说明：
+
+{truncated}
+"""

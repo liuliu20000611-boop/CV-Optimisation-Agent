@@ -16,8 +16,8 @@ class Settings(BaseSettings):
     )
 
     deepseek_api_key: str = Field(
-        ...,
-        description="DeepSeek API key (required). Set env DEEPSEEK_API_KEY.",
+        default="",
+        description="DeepSeek API key. Set env DEEPSEEK_API_KEY；未设置时仅健康检查/静态页等可用，调用模型将返回 503。",
     )
     deepseek_base_url: str = Field(
         default="https://api.deepseek.com/v1",

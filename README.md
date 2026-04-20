@@ -1,6 +1,6 @@
 # 简历优化 Agent
 
-基于 **FastAPI** 与 **DeepSeek**（OpenAI 兼容 `chat/completions`）的 Web 应用：粘贴或上传简历与目标 **JD**，通过 **SSE** 流式输出**匹配亮点 / 主要缺口 / 具体优化建议**；用户确认后**流式生成**完整优化简历，可导出 **Word（.docx）/ PDF / Markdown / 纯文本**。支持**返修分析**与**返修优化稿**（意见可留空以换角度）。**API Key 仅通过环境变量注入**，仓库内不包含密钥。
+基于 **FastAPI** 与 **DeepSeek**（OpenAI 兼容 `chat/completions`）的 Web 应用：粘贴或上传简历与目标 **JD**，通过 **SSE** 流式输出**匹配亮点 / 主要缺口 / 具体优化建议**；用户确认后**流式生成**完整优化简历。支持两类导出：1）常规导出 **Word（.docx）/ PDF / Markdown / 纯文本**；2）**模板改写导出**（从 `tex warehouse` 选模板，生成整份预览图，支持反馈重写，最终下载可编译 ZIP）。支持**返修分析**与**返修优化稿**。**API Key 仅通过环境变量注入**，仓库内不包含密钥。
 
 ---
 
@@ -14,7 +14,7 @@
 | 3   | 复制项目根目录 `**[.env.example](.env.example)`** 为 `**.env`**，编辑并填写 `**DEEPSEEK_API_KEY=`**        |
 | 4   | **二选一启动**：见下文 [3. 本地运行（不用 Docker）](#3-本地运行不用-docker) 或 [4. Docker 构建与运行](#4-docker-构建与运行)    |
 | 5   | 浏览器打开 **[http://127.0.0.1:8000/](http://127.0.0.1:8000/)**                                   |
-| 6   | **建议流程**：粘贴简历 + JD → **开始匹配分析（流式）** → 看到结构化结果 → 勾选确认 → **生成优化简历** → 尝试导出；可选 **返修分析 / 返修优化稿** |
+| 6   | **建议流程**：粘贴简历 + JD → 分析（可返修）→ 生成优化简历 →（可选）返修优化稿 → 选模板并改写（可反馈重写）→ 预览整份简历 → 下载 ZIP 或常规导出 |
 
 
 **健康检查**（可选）：`GET http://127.0.0.1:8000/health` 应返回 `{"status":"ok","version":"…"}`。
@@ -33,6 +33,7 @@
 
 - 优化阶段强调 **在保留原简历章节结构、列表符号与表述习惯** 的前提下润色（`OPTIMIZE_SYSTEM`），避免「换模板式」重写；并约束 **不编造** 学校、公司与项目。
 - 返修分析（`reanalysis_user_message`）与返修简历（`REFINE_OPTIMIZE_SYSTEM`）会把 **上一轮结果 + 用户反馈**（可空）一并交给模型，便于迭代。
+- 模板改写支持 **同模板记忆返修**（`previous_job_id` + 上一轮 tex 上下文）；用户切换模板时前端会清理旧上下文，避免跨模板污染。
 
 ### 2.3 流式与兜底
 
@@ -44,13 +45,14 @@
 
 ```
 app/
-  main.py           # 路由、静态资源、导出
+  main.py           # 路由、静态资源、导出、模板改写流
   config.py         # 环境变量（pydantic-settings）
   llm.py            # 同步/流式调用、JSON 解析与返修
   prompts.py        # 系统提示与用户消息模板
   stream_handlers.py# SSE 生成器与兜底
   schemas.py        # 请求/响应模型
   export_resume.py  # docx/pdf/纯文本
+  template_service.py # 模板扫描、渲染、预览图、ZIP 打包
   resume_extract.py # PDF/Word 等提取
   text_normalize.py
   cache.py / middleware.py
@@ -144,7 +146,7 @@ docker compose up --build
 
 | 变量                           | 必填    | 说明                                            |
 | ---------------------------- | ----- | --------------------------------------------- |
-| `DEEPSEEK_API_KEY`           | **是** | DeepSeek API 密钥                               |
+| `DEEPSEEK_API_KEY`           | 使用 LLM 时必填 | 未设置时服务可启动，`/health`、静态页、`/api/estimate`、上传与导出仍可用；分析/优化接口返回 503 或 SSE `NO_API_KEY` |
 | `DEEPSEEK_BASE_URL`          | 否     | 默认 `https://api.deepseek.com/v1`              |
 | `DEEPSEEK_MODEL`             | 否     | 默认 `deepseek-chat`                            |
 | `MAX_RESUME_CHARS`           | 否     | 简历最大字符数，默认 `120000`                           |
@@ -170,8 +172,9 @@ docker compose up --build
 3. **分析**：点击「开始匹配分析（流式）」→ 观察流式输出 → 结束后展示「匹配亮点 / 主要缺口 / 优化建议」。缓存命中时界面可显示「缓存」标记。
 4. **返修分析**：填写意见或留空 →「返修分析」。
 5. **优化**：勾选确认 →「生成优化简历」→ 流式展示全文。
-6. **导出**：Word / PDF / 纯文本 / Markdown；若服务端 docx/pdf 不可用，前端自动下载 `.txt` 与 `.md`。
-7. **返修优化稿**：对当前正文填写意见或留空 →「返修优化稿」。
+6. **返修优化稿（可选）**：对当前正文填写意见或留空 →「返修优化稿」。
+7. **模板改写（独立）**：从 `tex warehouse` 选模板，点击生成预览；可填写反馈后重写，确认后下载 ZIP（含 `.tex`、资源、`.pdf`）。
+8. **常规导出**：Word / PDF / 纯文本 / Markdown；若服务端 docx/pdf 不可用，前端自动下载 `.txt` 与 `.md`。
 
 ---
 
@@ -205,6 +208,10 @@ Linux / macOS：`export DEEPSEEK_API_KEY=test` 与 `export TESTING=1`。
 | `POST` | `/api/refine-optimize/stream` | SSE：返修优化稿                                      |
 | `POST` | `/api/upload-resume`          | `multipart/form-data`，字段名 `file`               |
 | `POST` | `/api/export-resume-file`     | JSON：`content` 与 `format`（取值为 docx、pdf、txt、md） |
+| `GET`  | `/api/tex-templates`          | 模板列表（来自 `tex warehouse`，含预览图）                      |
+| `POST` | `/api/template-rewrite/stream` | SSE：模板改写进度（改写→编译→打包），完成后返回预览与下载 URL         |
+| `GET`  | `/api/template-rewrite/{job_id}/preview/{page}` | 获取指定页预览图 |
+| `GET`  | `/api/template-rewrite/{job_id}/bundle` | 下载可编译 ZIP（tex+资源+pdf） |
 
 
 响应含 `**X-Request-ID**`；日志**不记录**简历正文与密钥。
@@ -239,6 +246,8 @@ Linux / macOS：`export DEEPSEEK_API_KEY=test` 与 `export TESTING=1`。
 ## 11. 文档与后续
 
 - 配置细节：`[docs/CONFIG.md](docs/CONFIG.md)`；多进程/多副本：`[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)`。
+- **PDF ↔ LaTeX MCP 工具**（简历：PDF→TeX→模型改字→编译 PDF）：`[docs/MCP_LATEX.md](docs/MCP_LATEX.md)`。
+- 需求分析与任务说明：`[R_A.md](R_A.md)`；项目说明与简历用语：`[CV.md](CV.md)`。
 - 后续可优化方向：`[todo.md](todo.md)`。
 
 ---

@@ -1,0 +1,178 @@
+%# -*- coding:utf-8 -*-
+%% start of file `template_en.tex'.
+%% Copyright 2006-1008 Xavier Danaux (xdanaux@gmail.com).
+%
+% This work may be distributed and/or modified under the
+% conditions of the LaTeX Project Public License version 1.3c,
+% available at http://www.latex-project.org/lppl/.
+
+
+\documentclass[11pt,a4paper]{moderncv}
+
+\usepackage{fontspec,xunicode}
+\usepackage[slantfont,boldfont]{xeCJK}
+\usepackage{xcolor}  % replace by the encoding you are using
+
+\usepackage{ifplatform} % 判断平台
+
+
+% \setmainfont{Tahoma}
+\setmainfont{Times New Roman}  % 缺省英文字体.serif是有衬线字体sans serif无衬线字体
+
+\ifwindows
+  % Windows 下使用的代码
+  \setCJKmainfont[ItalicFont=KaiTi, BoldFont=SimHei]{SimSun}  % 衬线字体 缺省中文字体为
+  \setCJKsansfont{SimSun}
+  \setmonofont{FangSong}                 % 等宽字体: FangSong, Consolas
+\fi
+
+\ifmacosx
+  % macOS 下使用的代码
+  \setCJKmainfont[ItalicFont={Kai}, BoldFont={Hei}]{STSong}  % 衬线字体 缺省中文字体为
+  \setCJKsansfont{STSong}
+  \setCJKmonofont{STFangsong}  % 中文等宽字体
+\fi
+
+
+%-----------------------xeCJK下设置中文字体------------------------------%
+\setCJKfamilyfont{song}{SimSun}  % 宋体 song
+\newcommand{\song}{\CJKfamily{song}}
+\setCJKfamilyfont{fs}{FangSong_GB2312}  % 仿宋2312 fs
+\newcommand{\fs}{\CJKfamily{fs}}
+\setCJKfamilyfont{yh}{Microsoft YaHei}  % 微软雅黑 yh
+\newcommand{\yh}{\CJKfamily{yh}}
+\setCJKfamilyfont{hei}{SimHei}  % 黑体  hei
+\newcommand{\hei}{\CJKfamily{hei}}
+\setCJKfamilyfont{hwxh}{STXihei}  % 华文细黑  hwxh
+\newcommand{\hwxh}{\CJKfamily{hwxh}}
+\setCJKfamilyfont{asong}{Adobe Song Std}  % Adobe 宋体  asong
+\newcommand{\asong}{\CJKfamily{asong}}
+\setCJKfamilyfont{ahei}{Adobe Heiti Std}  % Adobe 黑体  ahei
+\newcommand{\ahei}{\CJKfamily{ahei}}
+\setCJKfamilyfont{akai}{Adobe Kaiti Std}  % Adobe 楷体  akai
+\newcommand{\akai}{\CJKfamily{akai}}
+
+
+%------------------------------设置字体大小------------------------%
+\newcommand{\chuhao}{\fontsize{42pt}{\baselineskip}\selectfont}  % 初号
+\newcommand{\xiaochuhao}{\fontsize{36pt}{\baselineskip}\selectfont}  % 小初号
+\newcommand{\yihao}{\fontsize{28pt}{\baselineskip}\selectfont}  % 一号
+\newcommand{\erhao}{\fontsize{21pt}{\baselineskip}\selectfont}  % 二号
+\newcommand{\xiaoerhao}{\fontsize{18pt}{\baselineskip}\selectfont}  % 小二号
+\newcommand{\sanhao}{\fontsize{15.75pt}{\baselineskip}\selectfont}  % 三号
+\newcommand{\sihao}{\fontsize{14pt}{\baselineskip}\selectfont}  % 四号
+\newcommand{\xiaosihao}{\fontsize{12pt}{\baselineskip}\selectfont}  % 小四号
+\newcommand{\wuhao}{\fontsize{10.5pt}{\baselineskip}\selectfont}  % 五号
+\newcommand{\subwuhao}{\fontsize{10pt}{\baselineskip}\selectfont}  % 次五号
+\newcommand{\xiaowuhao}{\fontsize{9pt}{\baselineskip}\selectfont}  % 小五号
+\newcommand{\liuhao}{\fontsize{7.875pt}{\baselineskip}\selectfont}  % 六号
+\newcommand{\qihao}{\fontsize{5.25pt}{\baselineskip}\selectfont}  % 七号
+
+
+% \usepackage{fontawesome}
+% \setCJKmainfont[BoldFont={WenQuanYi Micro Hei/Bold}]{WenQuanYi Micro Hei}
+% \defaultfontfeatures{Mapping=tex-text}
+% \XeTeXlinebreaklocale "zh"
+% \XeTeXlinebreakskip = 0pt plus 1pt minus 0.1pt
+% moderncv themes
+\moderncvtheme[blue]{classic}  % optional argument are 'blue' (default), 'orange', 'red', 'green', 'grey' and 'roman' (for roman fonts, instead of sans serif fonts)
+% \moderncvtheme[green]{classic}  % idem
+% \moderncvtheme[blue,roman]{hht}
+% character encoding
+
+
+
+% adjust the page margins
+\usepackage[scale=0.9]{geometry}
+% \setlength{\hintscolumnwidth}{3cm}  % if you want to change the width of the column with the dates
+% \AtBeginDocument{\setlength{\maketitlenamewidth}{6cm}}  % only for the classic theme, if you want to change the width of your name placeholder (to leave more space for your address details
+\AtBeginDocument{\recomputelengths}  % required when changes are made to page layout lengths
+
+% personal data
+\firstname{毓池}
+\familyname{刘}
+\title{}  % optional, remove the line if not wanted
+% \address{杭州}{}  % optional, remove the line if not wanted
+\address{}  % optional, remove the line if not wanted
+\mobile{19581520611}  % optional, remove the line if not wanted
+% \fax{fax (optional)}  % optional, remove the line if not wanted
+\email{834787030@qq.com}  % optional, remove the line if not wanted
+\homepage{}  % optional, remove the line if not wanted
+\extrainfo{%
+  求职意向: AI开发工程师/大模型安全研究
+}
+
+% \photo[64pt]{avatar.png}  % '64pt' is the height the picture must be resized to and 'picture' is the name of the picture file; optional, remove the line if not wanted
+% \quote{China\TeX 您的LaTeX乐园，TeX\&\LaTeX 王国}  % optional, remove the line if not wante
+
+% \nopagenumbers{}  % uncomment to suppress automatic page numbering for CVs longer than one page
+
+
+%----------------------------------------------------------------------------------
+%            content
+%----------------------------------------------------------------------------------
+\begin{document}
+\maketitle
+\vspace*{-14mm}
+
+\section{教育经历}
+\cventry{2023.09--至今}{硕士}{中南民族大学}{计算机科学与技术}{}{绩点: 4.13/5.0 (5/21)}
+\cvlistitem{校级二等奖奖学金 (3次)}
+\cvlistitem{泰迪杯国家二等奖}
+\cvlistitem{学术成果: MS-ECFormer, IJCNN2026, CCF C, 一作论文 (风电预测, Transformer方向)}
+\cventry{2018.09--2022.06}{本科}{中北大学}{计算机科学与技术}{}{绩点: 3.93/5.0 (4/104)}
+\cvlistitem{校级二等奖奖学金 (4次)}
+\cvlistitem{蓝桥杯国家三等奖}
+
+\section{项目经历}
+\cventry{2025.06--2025.09}{智能客服Agent系统}{武汉文弘文创}{大模型应用工程师}{}{%
+  针对“步道乐跑”APP数千万大学生用户的咨询需求，独立开发了集成RAG和自动化工具链的智能客服Agent系统，以降低人力成本并实现7×24小时精准、可靠的服务。%
+  \newline{}%
+  主要工作：%
+  \begin{itemize}%
+    \item RAG知识库深度优化与风险缓解：采用父子分块策略处理非结构化《客服操作手册》，将业务知识的检索召回率提升30\%，并通过源头知识控制确保回答符合业务准则。%
+    \item Agent安全架构设计：利用LangChain框架，结合ReAct推理模式与有限状态机(FSM)管控高风险业务流程，提升智能体行为的可控性与可靠性。%
+    \item MCP Server工具化封装与安全编排：将后端工具封装为标准MCP服务，并对工具调用权限进行校验，支持根据用户意图动态调用多个工具。%
+  \end{itemize}%
+}
+\cventry{2024.09--2025.06}{铸牢中华民族共同体知识大模型对话系统}{}{}{}{%
+  基于大语言模型构建智能对话系统，通过权威政策和历史文化数据微调模型，结合RAG和Agent技术，实现多模态交互与复杂任务编排，提供安全、可靠的民族领域智能知识服务。%
+  \newline{}%
+  核心工作：%
+  \begin{itemize}%
+    \item 数据集构建与安全清洗：构建了涵盖学术文献、政策文件及官方报道的领域专属语料库，形成了约17万条高质量监督微调数据集。%
+    \item 模型微调与可靠性提升：采用“继续预训练知识注入”和“递进式监督微调”，基于LoRA技术依次递进微调。最终模型在领域客观任务上较基座模型提升20.4\%。%
+    \item RAG对话模块与事实性保障：构建自适应双层检索增强生成架构，将Top-5召回准确率提升至87.5\%，MRR达0.734，显著降低了模型生成的事实性幻觉。%
+  \end{itemize}%
+}
+\cventry{2024.03--2024.05}{基于视觉语言预训练(VLP)的中文图文检索研究}{}{}{}{%
+  针对大规模图文检索中的语义失真和效率瓶颈问题，独立研发了跨模态检索系统。通过两阶段预训练并引入了Flash-Attention和优化存储方案，显著提升了海量异构数据下的检索精度、响应速度及模型鲁棒性。%
+  \newline{}%
+  核心工作：%
+  \begin{itemize}%
+    \item 数据处理与增强：扩充高质量数据集并利用LMDB存储结构解决小图片读取瓶颈，提升模型在真实场景下的鲁棒性与泛化能力。%
+    \item 训练策略优化：采用两阶段训练逻辑，结合Random Masking和Flash-Attention技术进行算子级优化，提升训练效率。%
+    \item 模型性能与鲁棒性调优：通过细粒度图像文本特征对齐，使模型在处理复杂语义时的准确率提升了12.39\%，增强了模型对噪声和对抗性样本的稳健性。%
+  \end{itemize}%
+}
+
+\section{专业技能}
+\cvline{\textbf{编程语言与基础}}{掌握Python/C++，具备扎实的数据结构与算法基础。}
+\cvline{\textbf{大模型与智能体开发}}{具备RAG开发与优化经验，熟悉LangChain、LlamaIndex等框架。了解ReAct、Reflection等Agent推理范式以及AutoGen多智能体框架的基本原理。}
+\cvline{\textbf{模型微调与安全}}{具备大模型微调全流程经验，包括LoRA、SFT数据构建与继续预训练。关注大模型安全对齐、对抗攻击及智能体安全等前沿研究方向。}
+\cvline{\textbf{工具与工程能力}}{熟悉MCP（Model Context Protocol）、Skills等智能体工具化与编排技术。熟练运用Git进行分支管理与团队协作。学习能力强，能快速适应多种编程语言与新技术，具备良好的问题拆解与沟通协作能力。}
+
+\section{学术成果}
+\cvline{已录用}{MS-ECFormer, IJCNN2026, CCF C, 一作论文 (风电预测, Transformer方向)}
+
+\end{document}
+
+
+%% end of file `template_en.tex'.
+
+%%% Local Variables:
+%%% mode: latex
+%%% TeX-command-extra-options: "-shell-escape"
+%%% TeX-master: t
+%%% TeX-engine: xetex
+%%% End:

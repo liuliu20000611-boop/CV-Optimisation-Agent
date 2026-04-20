@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import tempfile
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -104,3 +105,87 @@ def test_upload_resume_too_large(client: TestClient) -> None:
         files={"file": ("a.txt", big, "text/plain")},
     )
     assert r.status_code == 400
+
+
+def test_list_tex_templates(client: TestClient) -> None:
+    r = client.get("/api/tex-templates")
+    assert r.status_code == 200
+    data = r.json()
+    assert isinstance(data, list)
+    assert len(data) >= 1
+    assert {"id", "name", "tex_rel_path"}.issubset(set(data[0].keys()))
+
+
+@patch("app.main.run_template_rewrite", new_callable=AsyncMock)
+@patch("app.main.render_template_to_pdf")
+def test_template_rewrite_success(mock_render, mock_rewrite: AsyncMock, client: TestClient) -> None:
+    templates = client.get("/api/tex-templates").json()
+    assert templates
+    t0 = templates[0]
+
+    tmp = tempfile.gettempdir()
+    tex_path = f"{tmp}/rendered_resume.tex"
+    pdf_path = f"{tmp}/rendered_resume.pdf"
+    zip_path = f"{tmp}/rendered_resume_bundle.zip"
+    with open(tex_path, "w", encoding="utf-8") as f:
+        f.write("\\documentclass{article}\\begin{document}ok\\end{document}")
+    with open(pdf_path, "wb") as f:
+        f.write(b"%PDF-1.7\n")
+    with open(zip_path, "wb") as f:
+        f.write(b"PK\x03\x04")
+
+    mock_rewrite.return_value = "\\documentclass{article}\\begin{document}ok\\end{document}"
+    mock_render.return_value = type(
+        "Job",
+        (),
+        {
+            "job_id": "abc123",
+            "template_name": "demo/template",
+            "tex_path": tex_path,
+            "pdf_path": pdf_path,
+            "bundle_path": zip_path,
+        },
+    )()
+
+    r = client.post(
+        "/api/template-rewrite",
+        json={
+            "optimized_resume": "这是优化后的简历正文",
+            "template_id": t0["id"],
+        },
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["job_id"] == "abc123"
+    assert body["zip_download_url"].endswith("/bundle")
+    assert body["tex_download_url"].endswith("/tex")
+    assert body["pdf_download_url"].endswith("/pdf")
+
+
+@patch("app.main.run_template_rewrite", new_callable=AsyncMock)
+@patch("app.main.render_template_to_pdf")
+def test_template_rewrite_stream_success(mock_render, mock_rewrite: AsyncMock, client: TestClient) -> None:
+    templates = client.get("/api/tex-templates").json()
+    assert templates
+    t0 = templates[0]
+
+    mock_rewrite.return_value = "\\documentclass{article}\\begin{document}ok\\end{document}"
+    mock_render.return_value = type(
+        "Job",
+        (),
+        {
+            "job_id": "jobstream1",
+            "template_name": "demo/template",
+        },
+    )()
+
+    r = client.post(
+        "/api/template-rewrite/stream",
+        json={"optimized_resume": "这是优化后的简历正文", "template_id": t0["id"]},
+    )
+    assert r.status_code == 200
+    assert "text/event-stream" in (r.headers.get("content-type") or "")
+    text = r.text
+    assert '"type": "progress"' in text
+    assert '"type": "done"' in text
+    assert '"zip_download_url": "/api/template-rewrite/jobstream1/bundle"' in text

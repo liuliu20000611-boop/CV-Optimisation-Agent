@@ -5,16 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>简历优化 Agent</title>
     <link rel="stylesheet" href="/static/style.css" />
-    <script type="importmap">
-      {
-        "imports": {
-          "vue": "https://unpkg.com/vue@3.5.13/dist/vue.esm-browser.js"
-        }
-      }
-    </script>
+    <!-- Vue 使用 jsDelivr，国内/企业网络下通常比 unpkg 更易访问；无需 importmap -->
   </head>
   <body>
-    <div id="app"></div>
-    <script type="module" src="/static/app.mjs"></script>
+    <div id="app">
+      <div class="boot-fallback">
+        <p class="boot-fallback-title">正在加载界面…</p>
+        <p class="boot-fallback-hint">
+          若长时间只有深色背景、没有表单，多半是 <strong>Vue 脚本未能从 CDN 加载</strong>。请检查网络/代理能否访问
+          <code>cdn.jsdelivr.net</code>，或在本机安装 Node 后执行
+          <code>cd frontend &amp;&amp; npm install &amp;&amp; npm run build</code>
+          使用打包后的前端。
+        </p>
+      </div>
+    </div>
+    <noscript>
+      <div class="boot-fallback" style="padding: 2rem">
+        <p>请启用 JavaScript 后刷新本页。</p>
+      </div>
+    </noscript>
+    <script type="module" src="/static/app.js"></script>
   </body>
 </html>

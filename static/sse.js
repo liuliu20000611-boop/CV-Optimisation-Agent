@@ -111,3 +111,88 @@ export async function exportResumeFile(format, content) {
   URL.revokeObjectURL(a.href);
   return { ok: true };
 }
+
+export async function fetchTexTemplates() {
+  const res = await fetch("/api/tex-templates");
+  if (!res.ok) {
+    throw new Error(await res.text().catch(() => "获取模板失败"));
+  }
+  return await res.json();
+}
+
+function parseFilenameFromDisposition(dispo, fallback) {
+  const star = /filename\*=UTF-8''([^;\s]+)/i.exec(dispo || "");
+  const plain = /filename="([^"]+)"/i.exec(dispo || "");
+  try {
+    if (star?.[1]) return decodeURIComponent(star[1]);
+    if (plain?.[1]) return plain[1];
+  } catch {
+    /* ignore malformed header */
+  }
+  return fallback;
+}
+
+export async function rewriteWithTemplate(templateId, optimizedResume) {
+  const res = await fetch("/api/template-rewrite", {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({
+      template_id: templateId,
+      optimized_resume: optimizedResume,
+    }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.detail || "模板改写失败");
+  }
+  if (typeof data.zip_download_url !== "string") {
+    throw new Error("模板改写返回格式异常");
+  }
+  return data;
+}
+
+export function downloadByUrl(url) {
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "";
+  a.click();
+}
+
+export async function downloadFileWithProgress(url, onProgress) {
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(await res.text().catch(() => "下载失败"));
+  }
+  const total = Number(res.headers.get("content-length") || 0);
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error("下载流不可用");
+
+  const chunks = [];
+  let loaded = 0;
+  onProgress?.({ loaded, total, percent: total > 0 ? 0 : null });
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value) {
+      chunks.push(value);
+      loaded += value.byteLength;
+      onProgress?.({
+        loaded,
+        total,
+        percent: total > 0 ? Math.min(100, Math.round((loaded / total) * 100)) : null,
+      });
+    }
+  }
+
+  const blob = new Blob(chunks, { type: res.headers.get("content-type") || "application/octet-stream" });
+  const filename = parseFilenameFromDisposition(
+    res.headers.get("content-disposition") || "",
+    "rendered-resume-bundle.zip"
+  );
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  onProgress?.({ loaded, total, percent: 100 });
+}

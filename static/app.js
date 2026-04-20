@@ -1,5 +1,10 @@
-import { computed, createApp, ref } from "vue";
-import { exportResumeFile, postSse } from "./sse.mjs";
+import { computed, createApp, ref } from "https://cdn.jsdelivr.net/npm/vue@3.5.13/dist/vue.esm-browser.js";
+import {
+  downloadByUrl,
+  exportResumeFile,
+  fetchTexTemplates,
+  postSse,
+} from "./sse.js";
 
 createApp({
   setup() {
@@ -28,6 +33,19 @@ createApp({
 
     const confirmOptimize = ref(false);
     const exportBusy = ref("");
+    const templates = ref([]);
+    const templatesLoading = ref(false);
+    const templateErr = ref("");
+    const selectedTemplateId = ref("");
+    const templateBusy = ref(false);
+    const templateMsg = ref("");
+    const rewriteProgress = ref(0);
+    const rewriteProgressText = ref("");
+    const rewritePreviewUrls = ref([]);
+    const rewriteZipUrl = ref("");
+    const templateFeedback = ref("");
+    const currentRewriteJobId = ref("");
+    let rewriteTimer = null;
 
     function resetOptimizeUi() {
       optStream.value = "";
@@ -206,6 +224,143 @@ createApp({
       }
     }
 
+    async function loadTemplates() {
+      templatesLoading.value = true;
+      templateErr.value = "";
+      try {
+        const data = await fetchTexTemplates();
+        templates.value = Array.isArray(data) ? data : [];
+        if (!selectedTemplateId.value && templates.value.length) {
+          selectedTemplateId.value = templates.value[0].id;
+        }
+      } catch (e) {
+        templateErr.value = e instanceof Error ? e.message : "模板加载失败";
+      } finally {
+        templatesLoading.value = false;
+      }
+    }
+
+    function onSelectTemplate(templateId) {
+      if (selectedTemplateId.value === templateId) return;
+      selectedTemplateId.value = templateId;
+      // 切模板时清理上一模板上下文，避免“跨模板返修”导致编译失败
+      rewritePreviewUrls.value = [];
+      rewriteZipUrl.value = "";
+      templateFeedback.value = "";
+      templateMsg.value = "";
+      templateErr.value = "";
+      rewriteProgress.value = 0;
+      rewriteProgressText.value = "";
+      currentRewriteJobId.value = "";
+      stopRewriteCountdown();
+    }
+
+    function stopRewriteCountdown() {
+      if (rewriteTimer) {
+        clearInterval(rewriteTimer);
+        rewriteTimer = null;
+      }
+    }
+
+    function startRewriteCountdown(fromPercent, toPercent, seconds, label) {
+      stopRewriteCountdown();
+      const start = Date.now();
+      const from = Math.max(0, Math.min(100, fromPercent));
+      const to = Math.max(from, Math.min(100, toPercent));
+      rewriteProgress.value = from;
+      rewriteTimer = setInterval(() => {
+        const elapsed = (Date.now() - start) / 1000;
+        const ratio = Math.min(1, elapsed / Math.max(1, seconds));
+        rewriteProgress.value = Math.round(from + (to - from) * ratio);
+        rewriteProgressText.value = `${label}（处理中）`;
+        if (ratio >= 1) {
+          stopRewriteCountdown();
+        }
+      }, 250);
+    }
+
+    async function runTemplateRewrite() {
+      const text = optimized.value.trim();
+      if (!selectedTemplateId.value) {
+        templateErr.value = "请先选择模板";
+        return;
+      }
+      if (!text) {
+        templateErr.value = "请先在「2. 生成优化简历」中得到优化稿，再进行模板改写";
+        return;
+      }
+      templateBusy.value = true;
+      stopRewriteCountdown();
+      rewriteProgress.value = 0;
+      rewriteProgressText.value = "准备改写…";
+      templateErr.value = "";
+      templateMsg.value = "";
+      rewritePreviewUrls.value = [];
+      rewriteZipUrl.value = "";
+      try {
+        const estLlmSec = Math.max(15, Math.min(70, Math.round(text.length / 220)));
+        const estCompileSec = Math.max(8, Math.min(45, Math.round(text.length / 480)));
+        startRewriteCountdown(5, 55, estLlmSec, "模型改写中");
+        await postSse("/api/template-rewrite/stream", {
+          template_id: selectedTemplateId.value,
+          optimized_resume: text,
+          user_feedback: templateFeedback.value.trim() || null,
+          previous_job_id: currentRewriteJobId.value || null,
+        }, (ev) => {
+          if (ev.type === "error" && typeof ev.message === "string") {
+            stopRewriteCountdown();
+            templateErr.value = ev.message;
+            return;
+          }
+          if (ev.type === "progress") {
+            if (ev.stage === "prepare") {
+              startRewriteCountdown(Math.max(rewriteProgress.value, 10), 55, estLlmSec, "模型改写中");
+              return;
+            }
+            if (ev.stage === "llm_done") {
+              startRewriteCountdown(65, 92, estCompileSec, "LaTeX 编译中");
+              return;
+            }
+            if (ev.stage === "compiled") {
+              stopRewriteCountdown();
+              rewriteProgress.value = 95;
+              rewriteProgressText.value = "编译完成，正在打包…";
+              return;
+            }
+            if (typeof ev.percent === "number") rewriteProgress.value = ev.percent;
+            if (typeof ev.message === "string") rewriteProgressText.value = ev.message;
+            return;
+          }
+          if (ev.type === "done") {
+            stopRewriteCountdown();
+            rewriteProgress.value = 100;
+            rewriteProgressText.value = "改写与编译完成";
+            if (typeof ev.zip_download_url === "string") rewriteZipUrl.value = ev.zip_download_url;
+            if (typeof ev.job_id === "string") currentRewriteJobId.value = ev.job_id;
+            if (Array.isArray(ev.preview_image_urls) && ev.preview_image_urls.length) {
+              rewritePreviewUrls.value = ev.preview_image_urls
+                .filter((x) => typeof x === "string" && x)
+                .map((x) => `${x}?t=${Date.now()}`);
+            } else if (typeof ev.preview_image_url === "string" && ev.preview_image_url) {
+              rewritePreviewUrls.value = [`${ev.preview_image_url}?t=${Date.now()}`];
+            }
+            const name = typeof ev.template_name === "string" ? ev.template_name : "所选模板";
+            templateMsg.value = `已生成预览：${name}。请先检查效果，确认后再下载 ZIP。`;
+          }
+        });
+      } catch (e) {
+        stopRewriteCountdown();
+        templateErr.value = e instanceof Error ? e.message : "模板改写失败";
+      } finally {
+        templateBusy.value = false;
+      }
+    }
+
+    function downloadRewriteBundle() {
+      if (!rewriteZipUrl.value) return;
+      downloadByUrl(rewriteZipUrl.value);
+    }
+
     const canOptimize = computed(
       () =>
         !!analysisResult.value &&
@@ -218,6 +373,8 @@ createApp({
       if (optStream.value) return optStream.value;
       return optimized.value;
     });
+
+    loadTemplates();
 
     return {
       resume,
@@ -240,6 +397,19 @@ createApp({
       refineMeta,
       confirmOptimize,
       exportBusy,
+      templates,
+      templatesLoading,
+      templateErr,
+      selectedTemplateId,
+      templateBusy,
+      templateMsg,
+      rewriteProgress,
+      rewriteProgressText,
+      rewritePreviewUrls,
+      rewriteZipUrl,
+      templateFeedback,
+      currentRewriteJobId,
+      onSelectTemplate,
       onUpload,
       runAnalyze,
       runReanalyze,
@@ -247,6 +417,8 @@ createApp({
       runRefine,
       resetOptimizeUi,
       doExport,
+      runTemplateRewrite,
+      downloadRewriteBundle,
       canOptimize,
       displayOptimized,
     };
@@ -328,17 +500,81 @@ createApp({
             </button>
           </div>
           <p class="hint">若 Word/PDF 服务端失败，将自动下载 UTF-8 的 .txt 与 .md。</p>
-          <h2 class="mt1">4. 对优化稿返修</h2>
-          <label>意见（可留空让模型换表述）</label>
-          <textarea v-model="feedbackRefine" placeholder="可选：缩短篇幅 / 加强某段 / 更偏技术…"></textarea>
-          <div class="row">
-            <button type="button" :disabled="refining" @click="runRefine">
-              {{ refining ? '返修中…' : '返修优化稿' }}
-            </button>
-          </div>
-          <p v-if="refineMeta.fallback" class="hint">本次返修已使用服务端兜底。</p>
-          <p v-if="refineErr" class="err">{{ refineErr }}</p>
         </template>
+      </section>
+      <section v-if="optimized.trim()">
+        <h2>4. 对优化稿返修</h2>
+        <label>意见（可留空让模型换表述）</label>
+        <textarea v-model="feedbackRefine" placeholder="可选：缩短篇幅 / 加强某段 / 更偏技术…"></textarea>
+        <div class="row">
+          <button type="button" :disabled="refining" @click="runRefine">
+            {{ refining ? '返修中…' : '返修优化稿' }}
+          </button>
+        </div>
+        <p v-if="refineMeta.fallback" class="hint">本次返修已使用服务端兜底。</p>
+        <p v-if="refineErr" class="err">{{ refineErr }}</p>
+      </section>
+      <section v-if="optimized.trim()">
+        <h2>5. 模板与改写（独立）</h2>
+        <p class="hint">从仓库（tex warehouse）选择模板后，会将“优化后的简历 + 模板内容”一起交给大模型生成。生成后先看整份预览图，不满意可反馈重写，最后再下载 ZIP。</p>
+        <div class="row" v-if="templatesLoading">
+          <span class="hint">模板加载中…</span>
+        </div>
+        <div class="tpl-grid" v-else>
+          <button
+            v-for="tpl in templates"
+            :key="tpl.id"
+            type="button"
+            class="tpl-card"
+            :class="{ active: selectedTemplateId === tpl.id }"
+            @click="onSelectTemplate(tpl.id)"
+          >
+            <img v-if="tpl.preview_url" :src="tpl.preview_url" :alt="tpl.name" />
+            <div v-else class="tpl-noimg">无预览图</div>
+            <div class="tpl-name">{{ tpl.name }}</div>
+            <div class="tpl-path">{{ tpl.tex_rel_path }}</div>
+          </button>
+        </div>
+        <template v-if="rewritePreviewUrls.length">
+          <label class="mt1">对当前模板改写的反馈（用于重写）</label>
+          <textarea v-model="templateFeedback" placeholder="例如：教育经历太靠后；技能请更精炼；项目按时间倒序…"></textarea>
+        </template>
+        <div class="row">
+          <button
+            type="button"
+            :disabled="templateBusy || !selectedTemplateId"
+            @click="runTemplateRewrite"
+          >
+            {{ templateBusy ? '改写中…' : (rewritePreviewUrls.length ? '根据反馈重写预览' : '生成预览') }}
+          </button>
+          <button
+            type="button"
+            class="secondary"
+            :disabled="!rewriteZipUrl"
+            @click="downloadRewriteBundle"
+          >
+            下载 ZIP
+          </button>
+        </div>
+        <div v-if="templateBusy || rewriteProgressText" class="zip-progress-wrap">
+          <div class="zip-progress-label">{{ rewriteProgressText || '准备改写…' }}</div>
+          <div class="zip-progress-track">
+            <div class="zip-progress-fill" :style="{ width: (rewriteProgress || 0) + '%' }"></div>
+          </div>
+        </div>
+        <div v-if="rewritePreviewUrls.length" class="tpl-preview-wrap">
+          <div class="tpl-preview-grid">
+            <img
+              v-for="(img, idx) in rewritePreviewUrls"
+              :key="img + idx"
+              :src="img"
+              :alt="'改写预览图第' + (idx + 1) + '页'"
+              class="tpl-preview-img"
+            />
+          </div>
+        </div>
+        <p v-if="templateMsg" class="hint">{{ templateMsg }}</p>
+        <p v-if="templateErr" class="err">{{ templateErr }}</p>
       </section>
     </div>
   `,

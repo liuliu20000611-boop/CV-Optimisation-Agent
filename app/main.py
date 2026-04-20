@@ -10,12 +10,16 @@ import httpx
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
-from urllib.parse import quote
 from fastapi.staticfiles import StaticFiles
-
+from urllib.parse import quote
 from app.cache import clear_expired, get_cached, set_cached
 from app.config import get_settings
-from app.llm import run_analysis, run_optimize
+from app.llm import (
+    run_analysis,
+    run_optimize,
+    run_template_rewrite,
+    run_template_rewrite_error_explain,
+)
 from app.stream_handlers import (
     stream_analyze,
     stream_optimize,
@@ -34,8 +38,21 @@ from app.schemas import (
     OptimizeResponse,
     ReanalyzeRequest,
     RefineOptimizeRequest,
+    TemplateRewriteRequest,
+    TemplateRewriteResponse,
+    TexTemplateItem,
+)
+from app.template_service import (
+    TEMPLATE_ROOT,
+    build_preview_url,
+    discover_templates,
+    get_render_job,
+    get_template_by_id,
+    read_template_text,
+    render_template_to_pdf,
 )
 from app.text_normalize import normalize_document_text, normalize_jd_text
+from app.sse_utils import sse_data
 
 logger = logging.getLogger(__name__)
 
@@ -82,8 +99,21 @@ app = FastAPI(
 
 @app.on_event("startup")
 async def startup_load_settings() -> None:
-    """Fail fast if DEEPSEEK_API_KEY is missing or invalid."""
-    get_settings()
+    """加载配置；未设置 DEEPSEEK_API_KEY 时仍可启动（仅不调模型）。"""
+    settings = get_settings()
+    if not settings.deepseek_api_key.strip():
+        logger.warning(
+            "未设置 DEEPSEEK_API_KEY：大模型相关接口将不可用，请在环境变量或项目根目录 .env 中配置。"
+        )
+
+
+def _require_deepseek_key() -> None:
+    """调用 DeepSeek 前校验密钥已配置。"""
+    if not get_settings().deepseek_api_key.strip():
+        raise HTTPException(
+            status_code=503,
+            detail="未配置 DEEPSEEK_API_KEY：请在环境变量或项目根目录 .env 中设置 DEEPSEEK_API_KEY 后重启服务。",
+        )
 
 
 app.add_middleware(
@@ -168,6 +198,7 @@ async def analyze(body: AnalyzeRequest, request: Request) -> Response:
                 headers={"X-Analysis-Cache": "HIT"},
             )
 
+    _require_deepseek_key()
     try:
         result = await run_analysis(settings, resume, jd)
     except ValueError as e:
@@ -202,6 +233,7 @@ async def optimize(body: OptimizeRequest) -> OptimizeResponse:
     if not resume or not jd:
         raise HTTPException(status_code=400, detail="简历与 JD 均不能为空")
     _validate_lengths(resume, jd)
+    _require_deepseek_key()
     settings = get_settings()
     try:
         text = await run_optimize(
@@ -421,8 +453,240 @@ async def export_resume_file(body: ExportRequest) -> Response:
     return Response(content=data, media_type=media, headers=headers)
 
 
+@app.get("/api/tex-templates", response_model=list[TexTemplateItem])
+async def list_tex_templates() -> list[TexTemplateItem]:
+    """List available LaTeX templates from tex warehouse."""
+    items: list[TexTemplateItem] = []
+    for t in discover_templates():
+        items.append(
+            TexTemplateItem(
+                id=t.id,
+                name=t.name,
+                tex_rel_path=t.tex_rel_path,
+                preview_url=build_preview_url(t.preview_rel_path),
+            )
+        )
+    return items
+
+
+@app.post("/api/template-rewrite", response_model=TemplateRewriteResponse)
+async def template_rewrite(body: TemplateRewriteRequest) -> TemplateRewriteResponse:
+    """Rewrite optimized resume into selected LaTeX template and compile PDF."""
+    text = body.optimized_resume.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="内容为空")
+    settings = get_settings()
+    if len(text) > settings.max_resume_chars:
+        raise HTTPException(status_code=400, detail="正文过长")
+
+    template = get_template_by_id(body.template_id.strip())
+    if not template:
+        raise HTTPException(status_code=404, detail="模板不存在")
+    previous_tex: str | None = None
+    if body.previous_job_id:
+        old_job = get_render_job(body.previous_job_id.strip())
+        if old_job and getattr(old_job, "template_id", None) == template.id and old_job.tex_path.is_file():
+            previous_tex = old_job.tex_path.read_text(encoding="utf-8")
+
+    _require_deepseek_key()
+    try:
+        rewritten_tex = await run_template_rewrite(
+            settings=settings,
+            optimized_resume=text,
+            template_tex=read_template_text(template),
+            user_feedback=body.user_feedback,
+            previous_tex=previous_tex,
+        )
+        job = render_template_to_pdf(template, rewritten_tex)
+    except httpx.HTTPStatusError as e:
+        logger.warning("DeepSeek HTTP 错误: %s", e.response.status_code)
+        raise HTTPException(status_code=502, detail="大模型服务暂时不可用，请稍后重试") from e
+    except httpx.RequestError as e:
+        logger.warning("网络错误: %s", e)
+        raise HTTPException(status_code=502, detail="无法连接大模型服务，请稍后重试") from e
+    except Exception as e:
+        logger.exception("模板改写或编译失败")
+        msg = f"模板改写失败：{e!s}"
+        try:
+            msg = await run_template_rewrite_error_explain(settings, msg)
+        except Exception:
+            pass
+        raise HTTPException(status_code=503, detail=msg) from e
+
+    return TemplateRewriteResponse(
+        job_id=job.job_id,
+        zip_download_url=f"/api/template-rewrite/{job.job_id}/bundle",
+        tex_download_url=f"/api/template-rewrite/{job.job_id}/tex",
+        pdf_download_url=f"/api/template-rewrite/{job.job_id}/pdf",
+        preview_image_url=f"/api/template-rewrite/{job.job_id}/preview"
+        if getattr(job, "preview_path", None)
+        else None,
+        preview_image_urls=[
+            f"/api/template-rewrite/{job.job_id}/preview/{i + 1}"
+            for i, _ in enumerate(getattr(job, "preview_paths", []) or [])
+        ],
+        template_name=job.template_name,
+    )
+
+
+@app.post("/api/template-rewrite/stream")
+async def template_rewrite_stream(body: TemplateRewriteRequest) -> StreamingResponse:
+    """SSE：模板改写进度（模型改写 -> LaTeX 编译 -> 打包）。"""
+    text = body.optimized_resume.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="内容为空")
+    settings = get_settings()
+    if len(text) > settings.max_resume_chars:
+        raise HTTPException(status_code=400, detail="正文过长")
+    template = get_template_by_id(body.template_id.strip())
+    if not template:
+        raise HTTPException(status_code=404, detail="模板不存在")
+    previous_tex: str | None = None
+    if body.previous_job_id:
+        old_job = get_render_job(body.previous_job_id.strip())
+        if old_job and getattr(old_job, "template_id", None) == template.id and old_job.tex_path.is_file():
+            previous_tex = old_job.tex_path.read_text(encoding="utf-8")
+
+    async def _gen():
+        if not settings.deepseek_api_key.strip():
+            yield sse_data(
+                {
+                    "type": "error",
+                    "message": "未配置 DEEPSEEK_API_KEY，无法调用大模型。",
+                    "code": "NO_API_KEY",
+                }
+            )
+            return
+        try:
+            yield sse_data({"type": "progress", "percent": 10, "stage": "prepare", "message": "准备模板改写"})
+            rewritten_tex = await run_template_rewrite(
+                settings=settings,
+                optimized_resume=text,
+                template_tex=read_template_text(template),
+                user_feedback=body.user_feedback,
+                previous_tex=previous_tex,
+            )
+            yield sse_data({"type": "progress", "percent": 65, "stage": "llm_done", "message": "模型改写完成，开始编译"})
+            job = render_template_to_pdf(template, rewritten_tex)
+            yield sse_data({"type": "progress", "percent": 95, "stage": "compiled", "message": "编译完成，准备下载"})
+            yield sse_data(
+                {
+                    "type": "done",
+                    "percent": 100,
+                    "job_id": job.job_id,
+                    "template_name": job.template_name,
+                    "zip_download_url": f"/api/template-rewrite/{job.job_id}/bundle",
+                    "tex_download_url": f"/api/template-rewrite/{job.job_id}/tex",
+                    "pdf_download_url": f"/api/template-rewrite/{job.job_id}/pdf",
+                    "preview_image_url": f"/api/template-rewrite/{job.job_id}/preview"
+                    if getattr(job, "preview_path", None)
+                    else None,
+                    "preview_image_urls": [
+                        f"/api/template-rewrite/{job.job_id}/preview/{i + 1}"
+                        for i, _ in enumerate(getattr(job, "preview_paths", []) or [])
+                    ],
+                }
+            )
+        except Exception as e:
+            logger.exception("模板改写流失败")
+            err_text = f"模板改写失败：{e!s}"
+            try:
+                user_msg = await run_template_rewrite_error_explain(settings, err_text)
+            except Exception:
+                user_msg = err_text
+            yield sse_data({"type": "error", "message": user_msg, "code": "TEMPLATE_REWRITE_FAILED"})
+
+    return StreamingResponse(
+        _gen(),
+        media_type="text/event-stream; charset=utf-8",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.get("/api/template-rewrite/{job_id}/tex")
+async def download_rewritten_tex(job_id: str) -> FileResponse:
+    job = get_render_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="文件不存在或已过期")
+    return FileResponse(
+        job.tex_path,
+        media_type="application/x-tex",
+        headers=_attachment_headers("rendered-resume.tex", "模板改写简历.tex"),
+    )
+
+
+@app.get("/api/template-rewrite/{job_id}/pdf")
+async def download_rewritten_pdf(job_id: str) -> FileResponse:
+    job = get_render_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="文件不存在或已过期")
+    return FileResponse(
+        job.pdf_path,
+        media_type="application/pdf",
+        headers=_attachment_headers("rendered-resume.pdf", "模板改写简历.pdf"),
+    )
+
+
+@app.get("/api/template-rewrite/{job_id}/bundle")
+async def download_rewrite_bundle(job_id: str) -> FileResponse:
+    """Download a zip bundle with tex + assets + compiled pdf."""
+    job = get_render_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="文件不存在或已过期")
+    return FileResponse(
+        job.bundle_path,
+        media_type="application/zip",
+        headers=_attachment_headers("rendered-resume-bundle.zip", "模板改写简历打包.zip"),
+    )
+
+
+@app.get("/api/template-rewrite/{job_id}/preview")
+async def download_rewrite_preview(job_id: str) -> FileResponse:
+    """Preview image of rewritten PDF first page."""
+    job = get_render_job(job_id)
+    if not job or not job.preview_path or not job.preview_path.is_file():
+        raise HTTPException(status_code=404, detail="预览图不存在")
+    return FileResponse(job.preview_path, media_type="image/png")
+
+
+@app.get("/api/template-rewrite/{job_id}/preview/{page}")
+async def download_rewrite_preview_page(job_id: str, page: int) -> FileResponse:
+    """Preview image by page index (1-based)."""
+    job = get_render_job(job_id)
+    paths = getattr(job, "preview_paths", None) if job else None
+    if not paths or page < 1 or page > len(paths):
+        raise HTTPException(status_code=404, detail="预览图不存在")
+    p = paths[page - 1]
+    if not p.is_file():
+        raise HTTPException(status_code=404, detail="预览图不存在")
+    return FileResponse(p, media_type="image/png")
+
+
+# 显式提供 ES 模块脚本：避免 Windows 下 StaticFiles/FileResponse 偶发 ERR_EMPTY_RESPONSE 或错误 MIME
+_JS_MT = "application/javascript"
+
+
+def _static_file_bytes(name: str) -> bytes:
+    path = STATIC_DIR / name
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="静态资源不存在")
+    return path.read_bytes()
+
+
 if STATIC_DIR.is_dir():
+
+    @app.get("/static/app.js", include_in_schema=False)
+    async def static_app_js() -> Response:
+        return Response(content=_static_file_bytes("app.js"), media_type=_JS_MT)
+
+    @app.get("/static/sse.js", include_in_schema=False)
+    async def static_sse_js() -> Response:
+        return Response(content=_static_file_bytes("sse.js"), media_type=_JS_MT)
+
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+if TEMPLATE_ROOT.is_dir():
+    app.mount("/tex-warehouse-assets", StaticFiles(directory=TEMPLATE_ROOT), name="tex_warehouse_assets")
 
 
 @app.get("/")
