@@ -174,6 +174,7 @@ docker compose up --build
 5. **优化**：勾选确认 →「生成优化简历」→ 流式展示全文。
 6. **返修优化稿（可选）**：对当前正文填写意见或留空 →「返修优化稿」。
 7. **模板改写（独立）**：从 `tex warehouse` 选模板，点击生成预览；可填写反馈后重写，确认后下载 ZIP（含 `.tex`、资源、`.pdf`）。
+   - 模板来源：可从 [awesome-resume-for-chinese](https://github.com/dyweb/awesome-resume-for-chinese) 下载后放入 `tex warehouse`，也可自行准备模板并放入该目录。
 8. **常规导出**：Word / PDF / 纯文本 / Markdown；若服务端 docx/pdf 不可用，前端自动下载 `.txt` 与 `.md`。
 
 ---
